@@ -331,4 +331,9 @@ GIGACHAT_TOKEN_URL = config('GIGACHAT_TOKEN_URL', default='https://ngw.devices.s
 GIGACHAT_API_BASE_URL = config('GIGACHAT_API_BASE_URL', default='https://gigachat.devices.sberbank.ru/api/v1')
 GIGACHAT_SCOPE = config('GIGACHAT_SCOPE', default='GIGACHAT_API_PERS')
 
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='')
+TELEGRAM_WEBHOOK_SECRET = config('TELEGRAM_WEBHOOK_SECRET', default='')
+TELEGRAM_WEBHOOK_URL = config('TELEGRAM_WEBHOOK_URL', default='')
+
 FORCE_SCRIPT_NAME = '/tarot'

@@ -49,4 +49,4 @@ services:
     entrypoint: []
     command: ["bash", "-c", "cd /app/tarot_project && celery -A tarot_project flower --port=5555"]
     profiles:
-      - ""  # Enable by default in development
+      - development

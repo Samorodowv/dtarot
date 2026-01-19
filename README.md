@@ -90,6 +90,9 @@ python manage.py collectstatic --noinput
 Key variables in `.env`:
 - `SECRET_KEY`: Django secret key (generate new for production)
 - `GIGACHAT_API_CREDENTIALS`: Your GigaChat API credentials
+- `TELEGRAM_BOT_TOKEN`: Telegram bot token for webhook integration
+- `TELEGRAM_WEBHOOK_URL`: Public HTTPS URL for the webhook endpoint
+- `TELEGRAM_WEBHOOK_SECRET`: Secret token for Telegram webhook verification
 - `DEBUG`: Set to False in production
 - `ALLOWED_HOSTS`: Comma-separated list (e.g., localhost,127.0.0.1,catsupremacy.ru)
 - `DATABASE_URL`: Database connection string

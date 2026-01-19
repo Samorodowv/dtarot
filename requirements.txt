@@ -8,6 +8,10 @@ dj-database-url==3.0.0
 
 # API Integration
 gigachat==0.1.39.post1
+python-telegram-bot==20.7
+
+# Imaging
+Pillow==10.3.0
 
 # Server
 gunicorn==23.0.0
