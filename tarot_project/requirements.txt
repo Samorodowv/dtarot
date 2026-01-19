@@ -1,0 +1,43 @@
+# Core Django
+Django==5.1.1
+django-cors-headers==4.4.0
+
+# Database
+psycopg2-binary==2.9.9
+dj-database-url==3.0.0
+
+# API Integration
+gigachat==0.1.39.post1
+
+# Server
+gunicorn==23.0.0
+whitenoise==6.7.0
+
+# Environment management
+python-decouple==3.8
+
+# Security
+django-ratelimit==4.1.0
+
+# Redis and Caching
+redis==6.2.0
+django-redis==6.0.0
+
+# Async Task Processing
+celery==5.5.3
+django-celery-beat==2.8.1
+django-celery-results==2.6.0
+
+# Development
+ipython==8.26.0
+
+# Testing
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+factory-boy==3.3.1
+freezegun==1.6.0
+
+# Monitoring & Error Tracking
+sentry-sdk==2.19.2

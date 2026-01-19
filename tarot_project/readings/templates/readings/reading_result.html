@@ -1,0 +1,39 @@
+{% extends 'readings/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="text-center mb-8">
+        <h2 class="text-3xl">Your Tarot Reading</h2>
+    </div>
+
+    <div class="grid {% if reading.reading_type == '1' %}place-items-center{% elif reading.reading_type == '3' %}grid-cols-3 gap-8{% else %}grid-cols-3 gap-4{% endif %}">
+        {% for position in reading.cardposition_set.all %}
+            <div class="card-container transform hover:scale-105 transition-transform duration-300">
+                <div class="relative">
+                    <img src="{% static position.card.image %}" 
+                         class="w-full {% if position.is_reversed %}rotate-180{% endif %} rounded-lg shadow-lg"
+                         alt="{{ position.card.name }}">
+                    <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-75 p-4 rounded-b-lg">
+                        <h3 class="text-xl font-bold">{{ position.card.name }}</h3>
+                        <p class="text-sm">
+                            {% if position.is_reversed %}
+                                Reversed: {{ position.card.meaning_reversed }}
+                            {% else %}
+                                Upright: {{ position.card.meaning_upright }}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="text-center mt-8">
+        <a href="{% url 'readings:home' %}" 
+           class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg inline-block">
+            Get Another Reading
+        </a>
+    </div>
+</div>
+{% endblock %} 

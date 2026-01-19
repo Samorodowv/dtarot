@@ -1,0 +1,52 @@
+# Docker Compose override for development
+# This file is automatically used by docker-compose for development overrides
+
+version: '3.8'
+
+services:
+  web:
+    build:
+      target: development
+    environment:
+      - DEBUG=True
+      - BUILD_TARGET=development
+      - DISABLE_FILE_LOGGING=true
+    volumes:
+      - ./tarot_project:/app/tarot_project:delegated
+      - ./tarot_cards:/app/tarot_cards:delegated
+    ports:
+      - "8001:8000"
+    entrypoint: []
+    command: ["bash", "-c", "mkdir -p /app/tarot_project/logs && cd /app/tarot_project && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+
+  celery_worker:
+    build:
+      target: development
+    environment:
+      - DEBUG=True
+      - DISABLE_FILE_LOGGING=true
+    volumes:
+      - ./tarot_project:/app/tarot_project:delegated
+    entrypoint: []
+    command: ["bash", "-c", "cd /app/tarot_project && celery -A tarot_project worker --loglevel=info --concurrency=2"]
+
+  celery_beat:
+    build:
+      target: development
+    environment:
+      - DEBUG=True
+      - DISABLE_FILE_LOGGING=true
+    volumes:
+      - ./tarot_project:/app/tarot_project:delegated
+    entrypoint: []
+    command: ["bash", "-c", "cd /app/tarot_project && celery -A tarot_project beat --loglevel=info"]
+
+  # Enable flower for development
+  flower:
+    environment:
+      - DEBUG=True
+      - DISABLE_FILE_LOGGING=true
+    entrypoint: []
+    command: ["bash", "-c", "cd /app/tarot_project && celery -A tarot_project flower --port=5555"]
+    profiles:
+      - ""  # Enable by default in development

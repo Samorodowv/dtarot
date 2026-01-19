@@ -1,0 +1,229 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: tarot_db
+    environment:
+      POSTGRES_DB: tarot_db
+      POSTGRES_USER: tarot_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tarot_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarot_user -d tarot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tarot_network
+
+  # Redis Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: tarot_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_secure_password}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tarot_network
+
+  # Django Web Application
+  web:
+    build: 
+      context: .
+      target: ${BUILD_TARGET:-production}
+    container_name: tarot_web
+    environment:
+      - DATABASE_URL=postgresql://tarot_user:${POSTGRES_PASSWORD:-tarot_secure_password}@db:5432/tarot_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secure_password}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-your-very-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,catsupremacy.ru}
+      - GIGACHAT_API_CREDENTIALS=${GIGACHAT_API_CREDENTIALS}
+      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
+      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
+      - GIGACHAT_USE_OAUTH=${GIGACHAT_USE_OAUTH:-true}
+      - GIGACHAT_DEFAULT_MODEL=${GIGACHAT_DEFAULT_MODEL:-GigaChat-Max}
+      - GIGACHAT_ENABLE_AUTO_MODEL_SELECTION=${GIGACHAT_ENABLE_AUTO_MODEL_SELECTION:-true}
+      - GIGACHAT_TIMEOUT=${GIGACHAT_TIMEOUT:-30}
+      - GIGACHAT_MAX_RETRIES=${GIGACHAT_MAX_RETRIES:-3}
+      - GIGACHAT_MAX_TOKENS=${GIGACHAT_MAX_TOKENS:-1000}
+      - GIGACHAT_TEMPERATURE=${GIGACHAT_TEMPERATURE:-0.7}
+      - GIGACHAT_AVAILABLE_MODELS=${GIGACHAT_AVAILABLE_MODELS}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - MONITORING_ENABLED=${MONITORING_ENABLED:-true}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ./tarot_project:/app/tarot_project
+      - ./tarot_cards:/app/tarot_cards
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - ./logs:/app/logs
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - tarot_network
+
+  # Celery Worker for Background Tasks
+  celery_worker:
+    build:
+      context: .
+      target: celery-worker
+    container_name: tarot_celery_worker
+    environment:
+      - DATABASE_URL=postgresql://tarot_user:${POSTGRES_PASSWORD:-tarot_secure_password}@db:5432/tarot_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secure_password}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-your-very-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - GIGACHAT_API_CREDENTIALS=${GIGACHAT_API_CREDENTIALS}
+      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
+      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
+      - GIGACHAT_USE_OAUTH=${GIGACHAT_USE_OAUTH:-true}
+      - GIGACHAT_DEFAULT_MODEL=${GIGACHAT_DEFAULT_MODEL:-GigaChat-Max}
+      - GIGACHAT_ENABLE_AUTO_MODEL_SELECTION=${GIGACHAT_ENABLE_AUTO_MODEL_SELECTION:-true}
+      - GIGACHAT_TIMEOUT=${GIGACHAT_TIMEOUT:-30}
+      - GIGACHAT_MAX_RETRIES=${GIGACHAT_MAX_RETRIES:-3}
+      - GIGACHAT_MAX_TOKENS=${GIGACHAT_MAX_TOKENS:-1000}
+      - GIGACHAT_TEMPERATURE=${GIGACHAT_TEMPERATURE:-0.7}
+      - GIGACHAT_AVAILABLE_MODELS=${GIGACHAT_AVAILABLE_MODELS}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - MONITORING_ENABLED=${MONITORING_ENABLED:-true}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ./tarot_project:/app/tarot_project
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - tarot_network
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build:
+      context: .
+      target: celery-beat
+    container_name: tarot_celery_beat
+    environment:
+      - DATABASE_URL=postgresql://tarot_user:${POSTGRES_PASSWORD:-tarot_secure_password}@db:5432/tarot_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secure_password}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-your-very-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - GIGACHAT_API_CREDENTIALS=${GIGACHAT_API_CREDENTIALS}
+      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
+      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
+      - GIGACHAT_USE_OAUTH=${GIGACHAT_USE_OAUTH:-true}
+      - GIGACHAT_DEFAULT_MODEL=${GIGACHAT_DEFAULT_MODEL:-GigaChat-Max}
+      - GIGACHAT_ENABLE_AUTO_MODEL_SELECTION=${GIGACHAT_ENABLE_AUTO_MODEL_SELECTION:-true}
+      - GIGACHAT_TIMEOUT=${GIGACHAT_TIMEOUT:-30}
+      - GIGACHAT_MAX_RETRIES=${GIGACHAT_MAX_RETRIES:-3}
+      - GIGACHAT_MAX_TOKENS=${GIGACHAT_MAX_TOKENS:-1000}
+      - GIGACHAT_TEMPERATURE=${GIGACHAT_TEMPERATURE:-0.7}
+      - GIGACHAT_AVAILABLE_MODELS=${GIGACHAT_AVAILABLE_MODELS}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ./tarot_project:/app/tarot_project
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - tarot_network
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: tarot_nginx
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - tarot_network
+    profiles:
+      - production
+
+  # Flower - Celery Monitoring (Development)
+  flower:
+    build:
+      context: .
+      target: base
+    container_name: tarot_flower
+    command: celery -A tarot_project flower --port=5555
+    environment:
+      - DATABASE_URL=postgresql://tarot_user:${POSTGRES_PASSWORD:-tarot_secure_password}@db:5432/tarot_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secure_password}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-your-very-secret-key-change-in-production}
+    volumes:
+      - ./tarot_project:/app/tarot_project
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - tarot_network
+    profiles:
+      - development
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+
+networks:
+  tarot_network:
+    driver: bridge

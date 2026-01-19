@@ -1,0 +1,223 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="Профессиональные расклады Таро с AI-интерпретацией. Получите персональные ответы на ваши вопросы.">
+    <meta name="theme-color" content="#1A202C">
+    <title>{% block title %}Мистические Карты Таро - Онлайн расклады{% endblock %}</title>
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Таро">
+    <link rel="apple-touch-icon" href="{% static 'icons/icon-192.png' %}">
+    
+    <!-- Preload critical resources -->
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    
+    <!-- Critical CSS -->
+    <link href="{% static 'css/app.css' %}" rel="stylesheet">
+    
+    <!-- Tailwind CSS with fallback -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" 
+          onerror="this.onerror=null;this.href='{% static 'css/tailwind-fallback.min.css' %}';">
+    
+    <!-- Scripts -->
+    <script src="{% static 'js/app.js' %}" defer></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10" defer 
+            onerror="console.warn('HTMX failed to load from CDN')"></script>
+    
+    <style>
+        /* Enhanced mystical background */
+        .mystical-bg {
+            background: linear-gradient(135deg, #1A202C 0%, #2D3748 50%, #1A202C 100%);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+        }
+        
+        .mystical-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(76, 29, 149, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(139, 69, 19, 0.05) 0%, transparent 70%);
+            animation: mysticalPulse 6s ease-in-out infinite;
+        }
+        
+        @keyframes mysticalPulse {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.02); }
+        }
+        
+        /* Enhanced mobile optimization */
+        body {
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        /* Loading states */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Enhanced button states */
+        .btn-primary {
+            @apply bg-purple-600 hover:bg-purple-700 active:bg-purple-800 focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50;
+            transition: all 0.2s ease-in-out;
+        }
+        
+        .btn-secondary {
+            @apply bg-gray-600 hover:bg-gray-700 active:bg-gray-800 focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50;
+            transition: all 0.2s ease-in-out;
+        }
+        
+        /* Enhanced form inputs */
+        .form-input {
+            @apply bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-purple-500 focus:border-purple-500;
+            transition: all 0.2s ease-in-out;
+        }
+        
+        .form-input:focus {
+            box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+        }
+        
+        /* Enhanced mobile navigation */
+        .nav-mobile {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(10px);
+        }
+        
+        /* Touch-friendly sizing */
+        @media (max-width: 768px) {
+            .touch-target {
+                min-height: 44px;
+                min-width: 44px;
+            }
+            
+            .container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+        }
+        
+        /* Accessibility improvements */
+        @media (prefers-reduced-motion: reduce) {
+            .mystical-bg::before {
+                animation: none;
+            }
+            
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+        
+        /* Dark mode enhancements */
+        @media (prefers-color-scheme: dark) {
+            .mystical-bg {
+                background: linear-gradient(135deg, #0A0A0A 0%, #1A1A1A 50%, #0A0A0A 100%);
+            }
+        }
+    </style>
+</head>
+<body class="text-white min-h-screen bg-gray-900">
+    <div class="mystical-bg"></div>
+    
+    <!-- Enhanced navigation -->
+    <nav class="nav-mobile bg-gray-800 bg-opacity-95 border-b border-purple-900/20">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <h1 class="text-xl md:text-2xl font-bold text-purple-400">
+                    🔮 Мистические Карты Таро
+                </h1>
+                <div class="hidden md:block text-sm text-gray-400">
+                    Онлайн расклады с AI-интерпретацией
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main content with better spacing -->
+    <main class="container mx-auto px-4 py-6 min-h-screen">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Enhanced footer -->
+    <footer class="bg-gray-800 bg-opacity-80 border-t border-purple-900/20 mt-auto">
+        <div class="container mx-auto px-4 py-4 text-center text-sm text-gray-400">
+            <p>Создано с мистической энергией для изучения будущего 🌟</p>
+        </div>
+    </footer>
+    
+    <!-- Global JavaScript -->
+    <script>
+        // Core app initialization is handled by app.js
+        
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/tarot/static/sw.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful');
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+        
+        // PWA Install Prompt
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Show install button if desired
+            const installBtn = document.createElement('button');
+            installBtn.className = 'btn-secondary px-3 py-2 rounded-lg text-xs fixed bottom-4 right-4 z-50';
+            installBtn.innerHTML = '📱 Установить';
+            installBtn.addEventListener('click', () => {
+                installBtn.style.display = 'none';
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the A2HS prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            });
+            
+            // Only show if not already installed
+            if (!window.matchMedia('(display-mode: standalone)').matches) {
+                document.body.appendChild(installBtn);
+            }
+        });
+    </script>
+</body>
+</html> 

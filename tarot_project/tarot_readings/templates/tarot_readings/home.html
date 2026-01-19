@@ -1,0 +1,49 @@
+{% extends 'tarot_readings/base.html' %}
+
+{% block content %}
+<div class="max-w-lg mx-auto mt-10 p-6 bg-gray-800 rounded-lg shadow-xl">
+    <h1 class="text-3xl text-center mb-8">Мистические Карты Таро</h1>
+    
+    {% if error %}
+    <div class="bg-red-500 text-white p-4 rounded-lg mb-6">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'tarot_readings:get_reading' %}" class="space-y-6">
+        {% csrf_token %}
+        
+        <div>
+            <label for="user_age" class="block text-sm font-medium text-gray-300">Ваш возраст</label>
+            <input type="number" name="user_age" id="user_age"
+                   class="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                   required min="18" max="120">
+        </div>
+
+        <div>
+            <label for="user_gender" class="block text-sm font-medium text-gray-300">Ваш пол</label>
+            <select name="user_gender" id="user_gender"
+                    class="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                    required>
+                <option value="">Выберите пол</option>
+                <option value="M">Мужской</option>
+                <option value="F">Женский</option>
+            </select>
+        </div>
+
+        <div>
+            <label for="question" class="block text-sm font-medium text-gray-300">Ваш вопрос</label>
+            <textarea name="question" id="question" rows="4"
+                      class="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                      required></textarea>
+        </div>
+
+        <div class="text-center">
+            <button type="submit"
+                    class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg inline-block transition-colors duration-300">
+                Разложить карты
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %} 

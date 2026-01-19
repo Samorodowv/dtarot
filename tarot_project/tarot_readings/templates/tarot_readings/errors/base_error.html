@@ -1,0 +1,28 @@
+{% extends "tarot_readings/base.html" %}
+
+{% block title %}Ошибка{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-md w-full text-center">
+        <div class="mystic-border p-8 rounded-xl shadow-2xl bg-purple-950/80">
+            <div class="mb-6">
+                <span class="text-6xl">{% block error_icon %}⚠️{% endblock %}</span>
+            </div>
+            <h1 class="text-4xl font-bold mb-4 text-yellow-400">
+                {% block error_code %}Ошибка{% endblock %}
+            </h1>
+            <p class="text-xl mb-6 text-purple-200">
+                {% block error_message %}{{ error_message|default:"Произошла непредвиденная ошибка" }}{% endblock %}
+            </p>
+            <div class="space-y-4">
+                <a href="{% url 'tarot_readings:home' %}" 
+                   class="inline-block px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors">
+                    Вернуться к раскладам
+                </a>
+                {% block extra_actions %}{% endblock %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Welcome to Mystic Tarot Readings"
+msgstr "Добро пожаловать в Мистические Карты Таро"
+
+msgid "Seek guidance from the cards for your life's questions"
+msgstr "Получите руководство карт для ваших жизненных вопросов"
+
+msgid "Your Age"
+msgstr "Ваш возраст"
+
+msgid "Your Gender"
+msgstr "Ваш пол"
+
+msgid "Select gender..."
+msgstr "Выберите пол..."
+
+msgid "Male"
+msgstr "Мужской"
+
+msgid "Female"
+msgstr "Женский"
+
+msgid "Non-binary"
+msgstr "Небинарный"
+
+msgid "Prefer not to say"
+msgstr "Предпочитаю не указывать"
+
+msgid "What would you like to ask the cards?"
+msgstr "Что бы вы хотели спросить у карт?"
+
+msgid "Enter your question here..."
+msgstr "Введите ваш вопрос здесь..."
+
+msgid "Consult the Cards"
+msgstr "Посоветоваться с картами"
+
+msgid "The cards will reveal a five-card spread to provide insight into your question:"
+msgstr "Карты раскроют пятикарточный расклад, чтобы дать понимание вашего вопроса:"
+
+msgid "Present Situation"
+msgstr "Текущая ситуация"
+
+msgid "Challenge or Obstacle"
+msgstr "Препятствие или вызов"
+
+msgid "Past Influence"
+msgstr "Влияние прошлого"
+
+msgid "Future Direction"
+msgstr "Направление будущего"
+
+msgid "Potential Outcome"
+msgstr "Возможный исход"
+
+msgid "Your Tarot Reading"
+msgstr "Ваш расклад Таро"
+
+msgid "Your Question:"
+msgstr "Ваш вопрос:"
+
+msgid "Your Personal Reading Interpretation"
+msgstr "Персональная интерпретация вашего расклада"
+
+msgid "Ask Another Question"
+msgstr "Задать другой вопрос"
+
+msgid "Challenge"
+msgstr "Препятствие"
+
+msgid "Past"
+msgstr "Прошлое"
+
+msgid "Future"
+msgstr "Будущее"
+
+msgid "Reversed"
+msgstr "Перевёрнутая"
+
+msgid "Upright"
+msgstr "Прямая" 

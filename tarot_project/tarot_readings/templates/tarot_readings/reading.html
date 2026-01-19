@@ -1,0 +1,284 @@
+{% extends 'tarot_readings/base.html' %}
+{% load static %}
+
+{% block title %}Создать расклад Таро - Мистические Карты{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-4 md:mt-10">
+    <!-- Welcome section -->
+    <div class="text-center mb-6 p-4 bg-gradient-to-r from-purple-900/30 to-gray-800/30 rounded-xl border border-purple-500/20">
+        <h2 class="text-2xl md:text-3xl font-bold text-purple-300 mb-2">
+            ✨ Создать расклад Таро
+        </h2>
+        <p class="text-sm md:text-base text-gray-300">
+            Получите персональную интерпретацию от AI-мастера карт
+        </p>
+    </div>
+
+    <!-- Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="mb-4 p-4 rounded-xl border-l-4 {% if message.tags == 'success' %}bg-green-900/50 border-green-400 text-green-200{% else %}bg-red-900/50 border-red-400 text-red-200{% endif %} animate-pulse">
+                <div class="flex items-center">
+                    <span class="text-xl mr-2">
+                        {% if message.tags == 'success' %}✅{% else %}❌{% endif %}
+                    </span>
+                    {{ message }}
+                </div>
+            </div>
+            {% if message.tags == 'success' %}
+                <script>
+                    setTimeout(() => window.location.reload(), 1500);
+                </script>
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    <!-- Main form -->
+    <div class="bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-2xl border border-purple-500/20 overflow-hidden">
+        {% if not can_create_reading and cooldown %}
+            <!-- Cooldown section -->
+            <div class="p-6 bg-gradient-to-r from-purple-900/50 to-red-900/30 border-b border-purple-500/20">
+                <div class="text-center">
+                    <div class="text-3xl mb-2">⏳</div>
+                    <h3 class="text-xl font-bold text-purple-300 mb-2">Карты отдыхают</h3>
+                    <p class="text-gray-300 mb-4">Следующий расклад будет доступен через:</p>
+                    <div class="text-3xl md:text-4xl font-bold text-purple-400 mb-4" id="timer">
+                        {{ cooldown.minutes }}:{% if cooldown.seconds < 10 %}0{% endif %}{{ cooldown.seconds }}
+                    </div>
+                    
+                    <!-- Promo code section -->
+                    <div class="bg-gray-800/60 rounded-lg p-4 border border-purple-500/30">
+                        <p class="text-sm text-gray-300 mb-3">
+                            💫 Есть промокод для мгновенного расклада?
+                        </p>
+                        <form method="post" class="space-y-3" id="promo-form">
+                            {% csrf_token %}
+                            <div class="relative">
+                                {{ promo_form.promo_code }}
+                            </div>
+                            <button type="submit" name="apply_promo" 
+                                    class="w-full btn-primary px-4 py-3 rounded-lg font-medium touch-target">
+                                🎯 Применить промокод
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Reading form -->
+        <div class="p-6">
+            <form method="post" class="space-y-6" id="reading-form">
+                {% csrf_token %}
+                
+                {% if form.non_field_errors %}
+                    <div class="bg-red-900/50 border border-red-400 text-red-200 p-4 rounded-lg">
+                        <div class="flex items-center">
+                            <span class="text-xl mr-2">⚠️</span>
+                            {{ form.non_field_errors.0 }}
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- Age field -->
+                <div class="space-y-2">
+                    <label class="block text-purple-300 font-medium text-sm">
+                        👤 {{ form.user_age.label }}
+                    </label>
+                    <div class="relative">
+                        {{ form.user_age }}
+                    </div>
+                    {% if form.user_age.errors %}
+                        <div class="text-red-400 text-sm flex items-center">
+                            <span class="mr-1">⚠️</span>
+                            {{ form.user_age.errors.0 }}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Gender field -->
+                <div class="space-y-2">
+                    <label class="block text-purple-300 font-medium text-sm">
+                        ⚤ {{ form.user_gender.label }}
+                    </label>
+                    <div class="relative">
+                        {{ form.user_gender }}
+                    </div>
+                    {% if form.user_gender.errors %}
+                        <div class="text-red-400 text-sm flex items-center">
+                            <span class="mr-1">⚠️</span>
+                            {{ form.user_gender.errors.0 }}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Question field -->
+                <div class="space-y-2">
+                    <label class="block text-purple-300 font-medium text-sm">
+                        💭 {{ form.question.label }}
+                        {% if promo_applied %}
+                            <span class="text-xs text-gray-400 font-normal">(необязательно)</span>
+                        {% endif %}
+                    </label>
+                    <div class="relative">
+                        {{ form.question }}
+                    </div>
+                    {% if form.question.errors and not promo_applied %}
+                        <div class="text-red-400 text-sm flex items-center">
+                            <span class="mr-1">⚠️</span>
+                            {{ form.question.errors.0 }}
+                        </div>
+                    {% endif %}
+                    <div class="text-xs text-gray-400">
+                        💡 Подсказка: Формулируйте вопрос четко и конкретно
+                    </div>
+                </div>
+
+                <!-- Submit button -->
+                <div class="pt-4">
+                    <button type="submit" 
+                            id="submit-btn"
+                            class="w-full btn-primary px-6 py-4 rounded-xl font-bold text-lg touch-target transition-all duration-300 {% if not can_create_reading %}opacity-50 cursor-not-allowed{% endif %}"
+                            {% if not can_create_reading %}disabled{% endif %}>
+                        <span class="flex items-center justify-center">
+                            <span class="mr-2">🔮</span>
+                            <span id="btn-text">Разложить карты Таро</span>
+                        </span>
+                    </button>
+                    
+                    {% if can_create_reading %}
+                        <div class="text-center mt-3 text-xs text-gray-400">
+                            ⚡ Интерпретация будет готова через 15-30 секунд
+                        </div>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Info section -->
+    <div class="mt-6 p-4 bg-gray-800/40 rounded-lg border border-purple-500/10">
+        <h4 class="text-sm font-medium text-purple-300 mb-2">🌟 Как это работает:</h4>
+        <ul class="text-xs text-gray-400 space-y-1">
+            <li>• Случайно выбираются 5 карт Таро</li>
+            <li>• AI анализирует расклад под ваш вопрос</li>
+            <li>• Вы получаете персональную интерпретацию</li>
+            <li>• Один бесплатный расклад в час</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    // Enhanced timer functionality
+    {% if cooldown %}
+    function updateTimer() {
+        const timerElement = document.getElementById('timer');
+        if (!timerElement) return;
+        
+        let [minutes, seconds] = timerElement.textContent.split(':').map(Number);
+        
+        const updateDisplay = () => {
+            if (seconds < 0) {
+                minutes -= 1;
+                seconds = 59;
+            }
+            if (minutes < 0) {
+                // Reload page when timer expires
+                location.reload();
+                return;
+            }
+            
+            timerElement.textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+            seconds -= 1;
+        };
+
+        updateDisplay();
+        setInterval(updateDisplay, 1000);
+    }
+    updateTimer();
+    {% endif %}
+
+    // Enhanced form submission
+    document.getElementById('reading-form').addEventListener('submit', function(e) {
+        const submitBtn = document.getElementById('submit-btn');
+        const btnText = document.getElementById('btn-text');
+        
+        if (submitBtn.disabled) {
+            e.preventDefault();
+            return;
+        }
+        
+        // Show loading state
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-75');
+        btnText.innerHTML = '<span class="loading-spinner mr-2"></span>Создаю расклад...';
+        
+        // Add visual feedback
+        submitBtn.style.transform = 'scale(0.98)';
+        setTimeout(() => {
+            submitBtn.style.transform = 'scale(1)';
+        }, 150);
+    });
+
+    // Enhanced input styling
+    document.querySelectorAll('input, select, textarea').forEach(input => {
+        input.classList.add('form-input', 'w-full');
+        
+        // Focus enhancements
+        input.addEventListener('focus', function() {
+            this.parentElement.classList.add('ring-2', 'ring-purple-500', 'ring-opacity-50');
+        });
+        
+        input.addEventListener('blur', function() {
+            this.parentElement.classList.remove('ring-2', 'ring-purple-500', 'ring-opacity-50');
+        });
+    });
+
+    // Auto-resize textarea
+    const questionField = document.querySelector('textarea[name="question"]');
+    if (questionField) {
+        questionField.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+    }
+</script>
+
+<style>
+/* Enhanced mobile styles */
+@media (max-width: 640px) {
+    .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+}
+
+/* Loading animation */
+.loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+/* Enhanced form animations */
+.form-input {
+    transition: all 0.2s ease-in-out;
+}
+
+.form-input:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.15);
+}
+
+/* Pulse animation for messages */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+</style>
+{% endblock %} 
