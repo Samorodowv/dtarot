@@ -92,7 +92,7 @@ class TarotInterpreter:
 
         max_retries = max_retries or self.max_retries
 
-        # Enhanced system prompt based on model capabilities
+        # System prompt is consistent across model selection
         selected_model = self._select_model_for_reading(reading.question, model_override)
         system_prompt = self._get_system_prompt_for_model(selected_model)
 
@@ -213,18 +213,13 @@ class TarotInterpreter:
         return selected
 
     def _get_system_prompt_for_model(self, model_name: str) -> str:
-        """Get optimized system prompt based on model capabilities"""
-        base_prompt = """Ты - опытный таролог с глубокими познаниями в эзотерике и психологии.
-        Твоя задача - интерпретировать расклад Таро, учитывая позиции карт, их прямое или перевернутое положение,
-        и вопрос клиента."""
-
-        if model_name == "GigaChat-Pro":
-            return base_prompt + """ Предоставь максимально подробную и профессиональную интерпретацию,
-            включая глубокий психологический анализ и эзотерические аспекты."""
-        elif model_name == "GigaChat-Max":
-            return base_prompt + """ Дай подробную и содержательную интерпретацию с практическими советами."""
-        else:
-            return base_prompt + """ Дай четкую и понятную интерпретацию."""
+        """Get a single system prompt independent of model selection"""
+        return (
+            "Ты - опытный таролог с глубокими познаниями в эзотерике и психологии. "
+            "Твоя задача - интерпретировать расклад Таро, учитывая позиции карт, их "
+            "прямое или перевернутое положение, и вопрос клиента. "
+            "Дай подробную и содержательную интерпретацию с практическими советами."
+        )
 
     def get_available_models(self) -> List[str]:
         """Get list of available GigaChat models"""

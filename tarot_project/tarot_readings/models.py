@@ -1,5 +1,10 @@
 from django.db import models
 
+GENDER_CHOICES = [
+    ('М', 'Мужской'),
+    ('Ж', 'Женский'),
+]
+
 class Card(models.Model):
     SUITS = [
         ('MA', 'Старшие арканы'),
@@ -21,11 +26,8 @@ class Card(models.Model):
         return f"{self.get_suit_display()} - {self.name}"
 
 class Reading(models.Model):
-    GENDER_CHOICES = [
-        ('М', 'Мужской'),
-        ('Ж', 'Женский'),
-    ]
-    
+    GENDER_CHOICES = GENDER_CHOICES
+
     created_at = models.DateTimeField(auto_now_add=True)
     user_age = models.IntegerField(null=False)
     user_gender = models.CharField(max_length=20, choices=GENDER_CHOICES)
@@ -35,6 +37,21 @@ class Reading(models.Model):
     
     def __str__(self):
         return f"Расклад для {self.get_user_gender_display()}, {self.user_age} лет - {self.created_at}"
+
+
+class TelegramUserProfile(models.Model):
+    telegram_user_id = models.BigIntegerField(unique=True)
+    chat_id = models.BigIntegerField(null=True, blank=True)
+    username = models.CharField(max_length=150, blank=True)
+    first_name = models.CharField(max_length=150, blank=True)
+    last_name = models.CharField(max_length=150, blank=True)
+    user_age = models.IntegerField(null=True, blank=True)
+    user_gender = models.CharField(max_length=20, choices=GENDER_CHOICES, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Telegram user {self.telegram_user_id}"
 
 class CardPosition(models.Model):
     card = models.ForeignKey(Card, on_delete=models.CASCADE)

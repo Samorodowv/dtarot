@@ -9,7 +9,7 @@ from django.db import transaction
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 
 from .exceptions import InsufficientCardsException
-from .models import CardPosition, Reading
+from .models import CardPosition, Reading, TelegramUserProfile
 from .monitoring import MonitoringUtils
 from .services import CardService, RateLimitService, ReadingService
 
@@ -66,11 +66,11 @@ async def _handle_message(message, bot):
         return
 
     if text.startswith(("/start", "/reading", "/new")):
-        await _start_reading_flow(user_id, chat_id, bot)
+        await _start_reading_flow(user_id, chat_id, message.from_user, bot)
         return
 
     if text.startswith("/promo"):
-        await _handle_promo_command(user_id, chat_id, text, bot)
+        await _handle_promo_command(user_id, chat_id, text, message.from_user, bot)
         return
 
     if text.startswith("/help"):
@@ -112,6 +112,7 @@ async def _handle_callback_query(callback_query, bot):
             return
 
         _update_data(user_id, user_gender=gender)
+        await sync_to_async(_upsert_profile, thread_sensitive=True)(user_id, user_gender=gender)
         _set_state(user_id, STATE_AWAITING_QUESTION)
         await bot.answer_callback_query(callback_query.id)
         await bot.edit_message_reply_markup(
@@ -137,7 +138,7 @@ async def _send_help(chat_id, bot):
     )
 
 
-async def _start_reading_flow(user_id, chat_id, bot):
+async def _start_reading_flow(user_id, chat_id, user, bot):
     session_key = _session_key(user_id)
     can_create, time_left = RateLimitService.can_create_reading(session_key)
     if not can_create:
@@ -153,12 +154,35 @@ async def _start_reading_flow(user_id, chat_id, bot):
         )
         return
 
+    profile = await sync_to_async(_upsert_profile, thread_sensitive=True)(
+        user_id,
+        chat_id=chat_id,
+        username=_normalize_user_field(getattr(user, "username", None)),
+        first_name=_normalize_user_field(getattr(user, "first_name", None)),
+        last_name=_normalize_user_field(getattr(user, "last_name", None)),
+    )
+
     _clear_data(user_id)
+    if profile.user_age is not None:
+        _update_data(user_id, user_age=profile.user_age)
+    if profile.user_gender:
+        _update_data(user_id, user_gender=profile.user_gender)
+
+    if profile.user_age is not None and profile.user_gender:
+        _set_state(user_id, STATE_AWAITING_QUESTION)
+        await _prompt_question(user_id, chat_id, bot)
+        return
+
+    if profile.user_age is not None:
+        _set_state(user_id, STATE_AWAITING_GENDER)
+        await bot.send_message(chat_id=chat_id, text="Выберите пол:", reply_markup=_gender_keyboard())
+        return
+
     _set_state(user_id, STATE_AWAITING_AGE)
     await bot.send_message(chat_id=chat_id, text="Сколько вам лет?")
 
 
-async def _handle_promo_command(user_id, chat_id, text, bot):
+async def _handle_promo_command(user_id, chat_id, text, user, bot):
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await bot.send_message(chat_id=chat_id, text="Введите промокод: /promo <код>.")
@@ -168,9 +192,7 @@ async def _handle_promo_command(user_id, chat_id, text, bot):
     if RateLimitService.apply_promo_code(_session_key(user_id), promo_code):
         await bot.send_message(chat_id=chat_id, text="Промокод применен. Можно начинать расклад.")
         if _get_state(user_id) == STATE_RATE_LIMITED:
-            _clear_data(user_id)
-            _set_state(user_id, STATE_AWAITING_AGE)
-            await bot.send_message(chat_id=chat_id, text="Сколько вам лет?")
+            await _start_reading_flow(user_id, chat_id, user, bot)
     else:
         await bot.send_message(chat_id=chat_id, text="Неверный промокод.")
 
@@ -187,6 +209,7 @@ async def _handle_age_input(user_id, chat_id, text, bot):
         return
 
     _update_data(user_id, user_age=age)
+    await sync_to_async(_upsert_profile, thread_sensitive=True)(user_id, user_age=age)
     _set_state(user_id, STATE_AWAITING_GENDER)
     await bot.send_message(chat_id=chat_id, text="Выберите пол:", reply_markup=_gender_keyboard())
 
@@ -199,6 +222,7 @@ async def _handle_gender_text(user_id, chat_id, text, bot):
         return
 
     _update_data(user_id, user_gender=gender)
+    await sync_to_async(_upsert_profile, thread_sensitive=True)(user_id, user_gender=gender)
     _set_state(user_id, STATE_AWAITING_QUESTION)
     await _prompt_question(user_id, chat_id, bot)
 
@@ -246,6 +270,12 @@ async def _handle_question_input(user_id, chat_id, text, bot):
     data = _get_data(user_id)
     user_age = data.get("user_age")
     user_gender = data.get("user_gender")
+    if user_age is None or user_gender is None:
+        profile = await sync_to_async(_get_profile, thread_sensitive=True)(user_id)
+        if profile and profile.user_age is not None and profile.user_gender:
+            _update_data(user_id, user_age=profile.user_age, user_gender=profile.user_gender)
+            user_age = profile.user_age
+            user_gender = profile.user_gender
     if user_age is None or user_gender is None:
         _set_state(user_id, STATE_AWAITING_AGE)
         await bot.send_message(chat_id=chat_id, text="Начнем сначала. Сколько вам лет?")
@@ -323,6 +353,28 @@ def _create_reading(user_age, user_gender, question, session_key):
         ReadingService.set_reading_status(reading.id, "processing")
 
     return reading, positions
+
+
+def _normalize_user_field(value):
+    return value if value else None
+
+
+def _get_profile(user_id):
+    return TelegramUserProfile.objects.filter(telegram_user_id=user_id).first()
+
+
+def _upsert_profile(user_id, **updates):
+    profile, _ = TelegramUserProfile.objects.get_or_create(telegram_user_id=user_id)
+    updated = False
+    for field, value in updates.items():
+        if value is None:
+            continue
+        if getattr(profile, field) != value:
+            setattr(profile, field, value)
+            updated = True
+    if updated:
+        profile.save()
+    return profile
 
 
 def _gender_keyboard():

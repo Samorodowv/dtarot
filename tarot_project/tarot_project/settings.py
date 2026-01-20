@@ -131,18 +131,18 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = config('STATIC_URL', default='/static/')
 
 # Путь, куда collectstatic будет собирать файлы
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = Path(config('STATIC_ROOT', default=str(BASE_DIR / 'staticfiles')))
 
 # Пути, где Django будет искать статические файлы
 STATICFILES_DIRS = [
     BASE_DIR / 'tarot_cards',  # Путь к вашим картам
 ]
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = config('MEDIA_URL', default='/media/')
+MEDIA_ROOT = Path(config('MEDIA_ROOT', default=str(BASE_DIR / 'media')))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

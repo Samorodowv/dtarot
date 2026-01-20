@@ -67,6 +67,10 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
       - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
+      - STATIC_ROOT=/app/staticfiles
+      - STATIC_URL=/tarot/static/
+      - MEDIA_ROOT=/app/media
+      - MEDIA_URL=/tarot/media/
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - MONITORING_ENABLED=${MONITORING_ENABLED:-true}

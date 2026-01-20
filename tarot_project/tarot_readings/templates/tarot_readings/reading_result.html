@@ -32,7 +32,7 @@
                         <!-- Card image container (no text overlays) -->
                         <div class="relative bg-gray-800/80 rounded-xl overflow-hidden border border-purple-500/20 hover:border-purple-400/40 transition-all duration-300">
                             <!-- Card image -->
-                            <div class="card-image-container {% if position.is_reversed %}rotate-180{% endif %} transition-transform duration-300">
+                            <div class="card-image-container transform {% if position.is_reversed %}rotate-180{% endif %} transition-transform duration-300">
                                 <img src="{% static position.card.image %}"
                                      class="w-full h-auto aspect-[2/3] object-cover"
                                      alt="{{ position.card.name }}"
