@@ -28,7 +28,7 @@ STATE_RATE_LIMITED = "rate_limited"
 async def _send_message(bot, chat_id, text, user_id, event_type="message", reply_markup=None, interaction_id=None):
     resolved_interaction_id = interaction_id or _get_interaction_id(user_id)
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-    log_interaction(
+    await _log_interaction_async(
         source="telegram",
         direction="out",
         event_type=event_type,
@@ -37,6 +37,10 @@ async def _send_message(bot, chat_id, text, user_id, event_type="message", reply
         content=text,
         metadata={"chat_id": chat_id},
     )
+
+
+async def _log_interaction_async(*args, **kwargs):
+    await sync_to_async(log_interaction, thread_sensitive=True)(*args, **kwargs)
 
 
 def handle_telegram_update(payload):
@@ -84,7 +88,7 @@ async def _handle_message(message, bot):
 
     if text.startswith(("/start", "/reading", "/new")):
         interaction_id = _start_new_interaction(user_id)
-        log_interaction(
+        await _log_interaction_async(
             source="telegram",
             direction="in",
             event_type="message",
@@ -97,7 +101,7 @@ async def _handle_message(message, bot):
         return
 
     interaction_id = _ensure_interaction_id(user_id)
-    log_interaction(
+    await _log_interaction_async(
         source="telegram",
         direction="in",
         event_type="message",
@@ -152,7 +156,7 @@ async def _handle_callback_query(callback_query, bot):
     data = callback_query.data or ""
     interaction_id = _ensure_interaction_id(user_id)
 
-    log_interaction(
+    await _log_interaction_async(
         source="telegram",
         direction="in",
         event_type="callback",
@@ -414,7 +418,7 @@ async def _handle_question_input(user_id, chat_id, text, bot):
         _clear_data(user_id)
         return
 
-    log_interaction(
+    await _log_interaction_async(
         source="telegram",
         direction="in",
         event_type="reading_request",
