@@ -47,10 +47,20 @@ class InteractionRetentionConfigAdmin(admin.ModelAdmin):
 
 @admin.register(InteractionLog)
 class InteractionLogAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "source", "direction", "event_type", "user_identifier", "reading")
+    list_display = ("created_at", "source", "direction", "event_type", "interaction_id", "user_identifier", "reading")
     list_filter = ("source", "direction", "event_type", "created_at")
-    search_fields = ("user_identifier", "content")
-    readonly_fields = ("created_at", "source", "direction", "event_type", "user_identifier", "content", "metadata", "reading")
+    search_fields = ("interaction_id", "user_identifier", "content")
+    readonly_fields = (
+        "created_at",
+        "source",
+        "direction",
+        "event_type",
+        "interaction_id",
+        "user_identifier",
+        "content",
+        "metadata",
+        "reading",
+    )
     ordering = ("-created_at",)
 
     def has_add_permission(self, request):

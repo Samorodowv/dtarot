@@ -139,6 +139,7 @@ class InteractionLog(models.Model):
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
     direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
     event_type = models.CharField(max_length=64)
+    interaction_id = models.CharField(max_length=128, blank=True, db_index=True, default="")
     user_identifier = models.CharField(max_length=128, blank=True)
     content = models.TextField(blank=True)
     metadata = models.JSONField(blank=True, null=True)

@@ -70,6 +70,7 @@ def interpret_reading(self, reading_id):
             source="web",
             direction="out",
             event_type="interpretation",
+            interaction_id=f"reading:{reading_id}",
             user_identifier=f"reading:{reading_id}",
             content=interpretation,
             reading=reading,
@@ -147,7 +148,7 @@ def interpret_reading(self, reading_id):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_telegram_reading(self, reading_id, chat_id):
+def send_telegram_reading(self, reading_id, chat_id, interaction_id=None):
     """
     Async task to send tarot cards and interpretation to Telegram.
     """
@@ -183,8 +184,8 @@ def send_telegram_reading(self, reading_id, chat_id):
                 "meaning": position.card.meaning_reversed if position.is_reversed else position.card.meaning_upright,
             })
 
-        _run_async(_send_cards_and_meanings(token, chat_id, reading_id, card_payloads))
-        _run_async(_send_processing_notice(token, chat_id, reading_id))
+        _run_async(_send_cards_and_meanings(token, chat_id, reading_id, card_payloads, interaction_id=interaction_id))
+        _run_async(_send_processing_notice(token, chat_id, reading_id, interaction_id=interaction_id))
 
         interpreter = TarotInterpreter()
         interpretation = interpreter.interpret_reading(reading, positions)
@@ -196,13 +197,13 @@ def send_telegram_reading(self, reading_id, chat_id):
         duration = time.time() - start_time
         MonitoringUtils.track_interpretation_time(reading_id, duration)
 
-        _run_async(_send_interpretation(token, chat_id, interpretation))
+        _run_async(_send_interpretation(token, chat_id, interpretation, interaction_id=interaction_id))
         logger.info(f"Successfully sent telegram interpretation for reading {reading_id}")
         return True
 
     except Reading.DoesNotExist:
         logger.error(f"Reading {reading_id} not found")
-        _run_async(_send_plain_message(token, chat_id, "Расклад не найден. Попробуйте создать новый."))
+        _run_async(_send_plain_message(token, chat_id, "Расклад не найден. Попробуйте создать новый.", interaction_id=interaction_id))
         return False
 
     except GigaChatAuthException:
@@ -220,7 +221,7 @@ def send_telegram_reading(self, reading_id, chat_id):
             reading.save()
         except Exception:
             pass
-        _run_async(_send_interpretation(token, chat_id, fallback))
+        _run_async(_send_interpretation(token, chat_id, fallback, interaction_id=interaction_id))
         return False
 
     except GigaChatTimeoutException as exc:
@@ -234,7 +235,7 @@ def send_telegram_reading(self, reading_id, chat_id):
             reading.save()
         except Exception:
             pass
-        _run_async(_send_plain_message(token, chat_id, "AI-сервис временно недоступен. Попробуйте создать новый расклад."))
+        _run_async(_send_plain_message(token, chat_id, "AI-сервис временно недоступен. Попробуйте создать новый расклад.", interaction_id=interaction_id))
         return False
 
     except GigaChatAPIException as exc:
@@ -245,7 +246,7 @@ def send_telegram_reading(self, reading_id, chat_id):
             reading.save()
         except Exception:
             pass
-        _run_async(_send_plain_message(token, chat_id, "Техническая проблема с интерпретацией. Карты выбраны правильно."))
+        _run_async(_send_plain_message(token, chat_id, "Техническая проблема с интерпретацией. Карты выбраны правильно.", interaction_id=interaction_id))
         return False
 
     except Exception as exc:
@@ -259,7 +260,7 @@ def send_telegram_reading(self, reading_id, chat_id):
             reading.save()
         except Exception:
             pass
-        _run_async(_send_plain_message(token, chat_id, "Произошла ошибка. Попробуйте создать новый расклад."))
+        _run_async(_send_plain_message(token, chat_id, "Произошла ошибка. Попробуйте создать новый расклад.", interaction_id=interaction_id))
         return False
 
 @shared_task
@@ -341,12 +342,12 @@ def _run_async(coro):
         return None
 
 
-async def _send_plain_message(token, chat_id, text):
+async def _send_plain_message(token, chat_id, text, interaction_id=None):
     async with Bot(token=token) as bot:
-        await _safe_send_message(bot, chat_id, text, event_type="message")
+        await _safe_send_message(bot, chat_id, text, event_type="message", interaction_id=interaction_id)
 
 
-async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
+async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads, interaction_id=None):
     cache_key = f"telegram_reading_{reading_id}_cards_sent"
     if cache.get(cache_key):
         return
@@ -377,6 +378,7 @@ async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
                     source="telegram",
                     direction="out",
                     event_type="media",
+                    interaction_id=interaction_id,
                     user_identifier=str(chat_id),
                     content="Отправлено изображение расклада",
                     metadata={"reading_id": reading_id, "type": "spread"},
@@ -401,6 +403,7 @@ async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
                         source="telegram",
                         direction="out",
                         event_type="media",
+                        interaction_id=interaction_id,
                         user_identifier=str(chat_id),
                         content=payload["caption"],
                         metadata={"reading_id": reading_id, "type": "card"},
@@ -416,12 +419,12 @@ async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
 
         summary = build_cards_summary(card_payloads)
         for chunk in split_message(summary):
-            await _safe_send_message(bot, chat_id, chunk, event_type="summary")
+            await _safe_send_message(bot, chat_id, chunk, event_type="summary", interaction_id=interaction_id)
 
     cache.set(cache_key, True, 3600)
 
 
-async def _send_processing_notice(token, chat_id, reading_id):
+async def _send_processing_notice(token, chat_id, reading_id, interaction_id=None):
     cache_key = f"telegram_reading_{reading_id}_processing_sent"
     if cache.get(cache_key):
         return
@@ -431,25 +434,27 @@ async def _send_processing_notice(token, chat_id, reading_id):
             chat_id,
             "AI-мастер карт анализирует расклад, подождите немного.",
             event_type="processing",
+            interaction_id=interaction_id,
         )
     cache.set(cache_key, True, 3600)
 
 
-async def _send_interpretation(token, chat_id, interpretation):
+async def _send_interpretation(token, chat_id, interpretation, interaction_id=None):
     if not interpretation:
         return
     async with Bot(token=token) as bot:
         for chunk in split_message(interpretation):
-            await _safe_send_message(bot, chat_id, chunk, event_type="interpretation")
+            await _safe_send_message(bot, chat_id, chunk, event_type="interpretation", interaction_id=interaction_id)
 
 
-async def _safe_send_message(bot, chat_id, text, event_type="message"):
+async def _safe_send_message(bot, chat_id, text, event_type="message", interaction_id=None):
     try:
         await bot.send_message(chat_id=chat_id, text=text)
         log_interaction(
             source="telegram",
             direction="out",
             event_type=event_type,
+            interaction_id=interaction_id,
             user_identifier=str(chat_id),
             content=text,
             metadata={"chat_id": chat_id},

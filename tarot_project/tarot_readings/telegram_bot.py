@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+from uuid import uuid4
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -24,12 +25,14 @@ STATE_AWAITING_QUESTION = "awaiting_question"
 STATE_RATE_LIMITED = "rate_limited"
 
 
-async def _send_message(bot, chat_id, text, user_id, event_type="message", reply_markup=None):
+async def _send_message(bot, chat_id, text, user_id, event_type="message", reply_markup=None, interaction_id=None):
+    resolved_interaction_id = interaction_id or _get_interaction_id(user_id)
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
     log_interaction(
         source="telegram",
         direction="out",
         event_type=event_type,
+        interaction_id=resolved_interaction_id,
         user_identifier=str(user_id),
         content=text,
         metadata={"chat_id": chat_id},
@@ -75,21 +78,34 @@ async def _handle_message(message, bot):
     text = (message.text or "").strip()
 
     if not text:
+        interaction_id = _ensure_interaction_id(user_id)
         await _send_message(bot, chat_id, "Пожалуйста, отправьте текстовое сообщение.", user_id, event_type="prompt")
         return
 
+    if text.startswith(("/start", "/reading", "/new")):
+        interaction_id = _start_new_interaction(user_id)
+        log_interaction(
+            source="telegram",
+            direction="in",
+            event_type="message",
+            interaction_id=interaction_id,
+            user_identifier=str(user_id),
+            content=text,
+            metadata={"chat_id": chat_id},
+        )
+        await _start_reading_flow(user_id, chat_id, message.from_user, bot, interaction_id=interaction_id)
+        return
+
+    interaction_id = _ensure_interaction_id(user_id)
     log_interaction(
         source="telegram",
         direction="in",
         event_type="message",
+        interaction_id=interaction_id,
         user_identifier=str(user_id),
         content=text,
         metadata={"chat_id": chat_id},
     )
-
-    if text.startswith(("/start", "/reading", "/new")):
-        await _start_reading_flow(user_id, chat_id, message.from_user, bot)
-        return
 
     if text.startswith("/promo"):
         await _handle_promo_command(user_id, chat_id, text, message.from_user, bot)
@@ -102,7 +118,15 @@ async def _handle_message(message, bot):
     if text.startswith("/cancel"):
         _clear_state(user_id)
         _clear_data(user_id)
-        await _send_message(bot, chat_id, "Диалог сброшен. Отправьте /start для нового расклада.", user_id, event_type="system")
+        _clear_interaction_id(user_id)
+        await _send_message(
+            bot,
+            chat_id,
+            "Диалог сброшен. Отправьте /start для нового расклада.",
+            user_id,
+            event_type="system",
+            interaction_id=interaction_id,
+        )
         return
 
     state = _get_state(user_id)
@@ -126,11 +150,13 @@ async def _handle_callback_query(callback_query, bot):
     user_id = callback_query.from_user.id
     chat_id = callback_query.message.chat.id
     data = callback_query.data or ""
+    interaction_id = _ensure_interaction_id(user_id)
 
     log_interaction(
         source="telegram",
         direction="in",
         event_type="callback",
+        interaction_id=interaction_id,
         user_identifier=str(user_id),
         content=data,
         metadata={"chat_id": chat_id},
@@ -172,7 +198,11 @@ async def _send_help(chat_id, bot, user_id):
     )
 
 
-async def _start_reading_flow(user_id, chat_id, user, bot):
+async def _start_reading_flow(user_id, chat_id, user, bot, interaction_id=None):
+    if interaction_id:
+        _set_interaction_id(user_id, interaction_id)
+    else:
+        interaction_id = _start_new_interaction(user_id)
     session_key = _session_key(user_id)
     can_create, time_left = RateLimitService.can_create_reading(session_key)
     if not can_create:
@@ -188,6 +218,7 @@ async def _start_reading_flow(user_id, chat_id, user, bot):
             ),
             user_id,
             event_type="rate_limit",
+            interaction_id=interaction_id,
         )
         return
 
@@ -236,7 +267,7 @@ async def _handle_promo_command(user_id, chat_id, text, user, bot):
     if RateLimitService.apply_promo_code(_session_key(user_id), promo_code):
         await _send_message(bot, chat_id, "Промокод применен. Можно начинать расклад.", user_id, event_type="promo")
         if _get_state(user_id) == STATE_RATE_LIMITED:
-            await _start_reading_flow(user_id, chat_id, user, bot)
+            await _start_reading_flow(user_id, chat_id, user, bot, interaction_id=_get_interaction_id(user_id))
     else:
         await _send_message(bot, chat_id, "Неверный промокод.", user_id, event_type="promo")
 
@@ -309,6 +340,7 @@ async def _prompt_question(user_id, chat_id, bot):
 async def _handle_question_input(user_id, chat_id, text, bot):
     session_key = _session_key(user_id)
     promo_applied = RateLimitService.is_promo_applied(session_key)
+    interaction_id = _get_interaction_id(user_id)
 
     if text.startswith("/skip"):
         if not promo_applied:
@@ -382,6 +414,22 @@ async def _handle_question_input(user_id, chat_id, text, bot):
         _clear_data(user_id)
         return
 
+    log_interaction(
+        source="telegram",
+        direction="in",
+        event_type="reading_request",
+        interaction_id=interaction_id,
+        user_identifier=str(user_id),
+        content=reading.question,
+        reading=reading,
+        metadata={
+            "chat_id": chat_id,
+            "user_age": reading.user_age,
+            "user_gender": reading.user_gender,
+            "reading_id": reading.id,
+        },
+    )
+
     _clear_state(user_id)
     _clear_data(user_id)
     await _send_message(
@@ -390,11 +438,12 @@ async def _handle_question_input(user_id, chat_id, text, bot):
         "Карты выбраны. Сейчас отправлю изображения и значения, затем интерпретацию.",
         user_id,
         event_type="status",
+        interaction_id=interaction_id,
     )
 
     from .tasks import send_telegram_reading
 
-    send_telegram_reading.delay(reading.id, chat_id)
+    send_telegram_reading.delay(reading.id, chat_id, interaction_id)
 
 
 def _create_reading(user_age, user_gender, question, session_key):
@@ -487,6 +536,36 @@ def _format_time_left(time_left):
 
 def _session_key(user_id):
     return f"telegram_{user_id}"
+
+
+def _interaction_key(user_id):
+    return f"telegram_interaction_{user_id}"
+
+
+def _get_interaction_id(user_id):
+    return cache.get(_interaction_key(user_id))
+
+
+def _set_interaction_id(user_id, interaction_id):
+    cache.set(_interaction_key(user_id), interaction_id, STATE_TTL_SECONDS)
+
+
+def _clear_interaction_id(user_id):
+    cache.delete(_interaction_key(user_id))
+
+
+def _ensure_interaction_id(user_id):
+    interaction_id = _get_interaction_id(user_id)
+    if not interaction_id:
+        interaction_id = f"tg:{user_id}:{uuid4().hex}"
+        _set_interaction_id(user_id, interaction_id)
+    return interaction_id
+
+
+def _start_new_interaction(user_id):
+    interaction_id = f"tg:{user_id}:{uuid4().hex}"
+    _set_interaction_id(user_id, interaction_id)
+    return interaction_id
 
 
 def _state_key(user_id):

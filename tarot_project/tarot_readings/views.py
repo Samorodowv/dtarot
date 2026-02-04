@@ -127,6 +127,7 @@ class GetReadingView(CreateView):
                     source="web",
                     direction="in",
                     event_type="reading_request",
+                    interaction_id=f"reading:{reading.id}",
                     user_identifier=str(session_key),
                     content=reading.question,
                     reading=reading,
