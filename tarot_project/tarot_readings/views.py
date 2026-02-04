@@ -10,6 +10,7 @@ from .services import RateLimitService, CardService, ReadingService
 from .tasks import interpret_reading
 from .exceptions import InsufficientCardsException
 from .monitoring import MonitoringUtils
+from .interaction_logging import log_interaction
 import random
 import logging
 from django.contrib import messages
@@ -67,10 +68,31 @@ class GetReadingView(CreateView):
             promo_form = PromoCodeForm(request.POST)
             if promo_form.is_valid():
                 promo_code = promo_form.cleaned_data['promo_code']
+                log_interaction(
+                    source="web",
+                    direction="in",
+                    event_type="promo_apply",
+                    user_identifier=str(session_key),
+                    content=promo_code,
+                )
                 if RateLimitService.apply_promo_code(session_key, promo_code):
                     messages.success(request, 'Промокод успешно применен! Вы можете сделать расклад немедленно.')
+                    log_interaction(
+                        source="web",
+                        direction="out",
+                        event_type="promo_result",
+                        user_identifier=str(session_key),
+                        content="Промокод применен",
+                    )
                 else:
                     messages.error(request, 'Неверный промокод.')
+                    log_interaction(
+                        source="web",
+                        direction="out",
+                        event_type="promo_result",
+                        user_identifier=str(session_key),
+                        content="Неверный промокод",
+                    )
             return redirect('tarot_readings:home')
         
         # Если это не промокод, обрабатываем основную форму
@@ -100,6 +122,20 @@ class GetReadingView(CreateView):
                     reading.question = "Общий расклад на ближайшее будущее"
                 
                 reading.save()
+
+                log_interaction(
+                    source="web",
+                    direction="in",
+                    event_type="reading_request",
+                    user_identifier=str(session_key),
+                    content=reading.question,
+                    reading=reading,
+                    metadata={
+                        "user_age": reading.user_age,
+                        "user_gender": reading.user_gender,
+                        "reading_id": reading.id,
+                    },
+                )
                 
                 # Track reading creation
                 MonitoringUtils.track_reading_creation()

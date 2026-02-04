@@ -12,6 +12,7 @@ from .exceptions import InsufficientCardsException
 from .models import CardPosition, Reading, TelegramUserProfile
 from .monitoring import MonitoringUtils
 from .services import CardService, RateLimitService, ReadingService
+from .interaction_logging import log_interaction
 
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,18 @@ STATE_AWAITING_AGE = "awaiting_age"
 STATE_AWAITING_GENDER = "awaiting_gender"
 STATE_AWAITING_QUESTION = "awaiting_question"
 STATE_RATE_LIMITED = "rate_limited"
+
+
+async def _send_message(bot, chat_id, text, user_id, event_type="message", reply_markup=None):
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+    log_interaction(
+        source="telegram",
+        direction="out",
+        event_type=event_type,
+        user_identifier=str(user_id),
+        content=text,
+        metadata={"chat_id": chat_id},
+    )
 
 
 def handle_telegram_update(payload):
@@ -62,8 +75,17 @@ async def _handle_message(message, bot):
     text = (message.text or "").strip()
 
     if not text:
-        await bot.send_message(chat_id=chat_id, text="Пожалуйста, отправьте текстовое сообщение.")
+        await _send_message(bot, chat_id, "Пожалуйста, отправьте текстовое сообщение.", user_id, event_type="prompt")
         return
+
+    log_interaction(
+        source="telegram",
+        direction="in",
+        event_type="message",
+        user_identifier=str(user_id),
+        content=text,
+        metadata={"chat_id": chat_id},
+    )
 
     if text.startswith(("/start", "/reading", "/new")):
         await _start_reading_flow(user_id, chat_id, message.from_user, bot)
@@ -74,13 +96,13 @@ async def _handle_message(message, bot):
         return
 
     if text.startswith("/help"):
-        await _send_help(chat_id, bot)
+        await _send_help(chat_id, bot, user_id)
         return
 
     if text.startswith("/cancel"):
         _clear_state(user_id)
         _clear_data(user_id)
-        await bot.send_message(chat_id=chat_id, text="Диалог сброшен. Отправьте /start для нового расклада.")
+        await _send_message(bot, chat_id, "Диалог сброшен. Отправьте /start для нового расклада.", user_id, event_type="system")
         return
 
     state = _get_state(user_id)
@@ -94,7 +116,7 @@ async def _handle_message(message, bot):
         await _handle_question_input(user_id, chat_id, text, bot)
         return
 
-    await _send_help(chat_id, bot)
+    await _send_help(chat_id, bot, user_id)
 
 
 async def _handle_callback_query(callback_query, bot):
@@ -104,6 +126,15 @@ async def _handle_callback_query(callback_query, bot):
     user_id = callback_query.from_user.id
     chat_id = callback_query.message.chat.id
     data = callback_query.data or ""
+
+    log_interaction(
+        source="telegram",
+        direction="in",
+        event_type="callback",
+        user_identifier=str(user_id),
+        content=data,
+        metadata={"chat_id": chat_id},
+    )
 
     if data.startswith("gender:"):
         gender = data.split(":", 1)[1]
@@ -126,15 +157,18 @@ async def _handle_callback_query(callback_query, bot):
     await bot.answer_callback_query(callback_query.id)
 
 
-async def _send_help(chat_id, bot):
-    await bot.send_message(
-        chat_id=chat_id,
-        text=(
+async def _send_help(chat_id, bot, user_id):
+    await _send_message(
+        bot,
+        chat_id,
+        (
             "Доступные команды:\n"
             "/start — начать новый расклад\n"
             "/promo <код> — применить промокод\n"
             "/cancel — сбросить текущий диалог"
         ),
+        user_id,
+        event_type="help",
     )
 
 
@@ -144,13 +178,16 @@ async def _start_reading_flow(user_id, chat_id, user, bot):
     if not can_create:
         _set_state(user_id, STATE_RATE_LIMITED)
         _clear_data(user_id)
-        await bot.send_message(
-            chat_id=chat_id,
-            text=(
+        await _send_message(
+            bot,
+            chat_id,
+            (
                 "Следующий расклад будет доступен через "
                 f"{_format_time_left(time_left)}.\n"
                 "Можно использовать промокод: отправьте /promo <код>."
             ),
+            user_id,
+            event_type="rate_limit",
         )
         return
 
@@ -175,50 +212,77 @@ async def _start_reading_flow(user_id, chat_id, user, bot):
 
     if profile.user_age is not None:
         _set_state(user_id, STATE_AWAITING_GENDER)
-        await bot.send_message(chat_id=chat_id, text="Выберите пол:", reply_markup=_gender_keyboard())
+        await _send_message(
+            bot,
+            chat_id,
+            "Выберите пол:",
+            user_id,
+            event_type="prompt",
+            reply_markup=_gender_keyboard(),
+        )
         return
 
     _set_state(user_id, STATE_AWAITING_AGE)
-    await bot.send_message(chat_id=chat_id, text="Сколько вам лет?")
+    await _send_message(bot, chat_id, "Сколько вам лет?", user_id, event_type="prompt")
 
 
 async def _handle_promo_command(user_id, chat_id, text, user, bot):
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await bot.send_message(chat_id=chat_id, text="Введите промокод: /promo <код>.")
+        await _send_message(bot, chat_id, "Введите промокод: /promo <код>.", user_id, event_type="prompt")
         return
 
     promo_code = parts[1].strip()
     if RateLimitService.apply_promo_code(_session_key(user_id), promo_code):
-        await bot.send_message(chat_id=chat_id, text="Промокод применен. Можно начинать расклад.")
+        await _send_message(bot, chat_id, "Промокод применен. Можно начинать расклад.", user_id, event_type="promo")
         if _get_state(user_id) == STATE_RATE_LIMITED:
             await _start_reading_flow(user_id, chat_id, user, bot)
     else:
-        await bot.send_message(chat_id=chat_id, text="Неверный промокод.")
+        await _send_message(bot, chat_id, "Неверный промокод.", user_id, event_type="promo")
 
 
 async def _handle_age_input(user_id, chat_id, text, bot):
     try:
         age = int(text)
     except ValueError:
-        await bot.send_message(chat_id=chat_id, text="Введите возраст числом (от 18 до 100).")
+        await _send_message(bot, chat_id, "Введите возраст числом (от 18 до 100).", user_id, event_type="validation")
         return
 
     if age < 18 or age > 100:
-        await bot.send_message(chat_id=chat_id, text="Возраст должен быть от 18 до 100 лет.")
+        await _send_message(bot, chat_id, "Возраст должен быть от 18 до 100 лет.", user_id, event_type="validation")
         return
 
     _update_data(user_id, user_age=age)
     await sync_to_async(_upsert_profile, thread_sensitive=True)(user_id, user_age=age)
     _set_state(user_id, STATE_AWAITING_GENDER)
-    await bot.send_message(chat_id=chat_id, text="Выберите пол:", reply_markup=_gender_keyboard())
+    await _send_message(
+        bot,
+        chat_id,
+        "Выберите пол:",
+        user_id,
+        event_type="prompt",
+        reply_markup=_gender_keyboard(),
+    )
 
 
 async def _handle_gender_text(user_id, chat_id, text, bot):
     gender = _parse_gender(text)
     if not gender:
-        await bot.send_message(chat_id=chat_id, text="Пожалуйста, выберите пол кнопкой ниже.")
-        await bot.send_message(chat_id=chat_id, text="Выберите пол:", reply_markup=_gender_keyboard())
+        await _send_message(
+            bot,
+            chat_id,
+            "Пожалуйста, выберите пол кнопкой ниже.",
+            user_id,
+            event_type="validation",
+        )
+        await _send_message(
+            bot,
+            chat_id,
+            "Выберите пол:",
+            user_id,
+            event_type="prompt",
+            reply_markup=_gender_keyboard(),
+        )
         return
 
     _update_data(user_id, user_gender=gender)
@@ -231,12 +295,15 @@ async def _prompt_question(user_id, chat_id, bot):
     session_key = _session_key(user_id)
     promo_applied = RateLimitService.is_promo_applied(session_key)
     if promo_applied:
-        await bot.send_message(
-            chat_id=chat_id,
-            text="Напишите ваш вопрос или отправьте /skip для общего расклада.",
+        await _send_message(
+            bot,
+            chat_id,
+            "Напишите ваш вопрос или отправьте /skip для общего расклада.",
+            user_id,
+            event_type="prompt",
         )
     else:
-        await bot.send_message(chat_id=chat_id, text="Напишите ваш вопрос к картам.")
+        await _send_message(bot, chat_id, "Напишите ваш вопрос к картам.", user_id, event_type="prompt")
 
 
 async def _handle_question_input(user_id, chat_id, text, bot):
@@ -245,25 +312,28 @@ async def _handle_question_input(user_id, chat_id, text, bot):
 
     if text.startswith("/skip"):
         if not promo_applied:
-            await bot.send_message(chat_id=chat_id, text="Без промокода вопрос обязателен.")
+            await _send_message(bot, chat_id, "Без промокода вопрос обязателен.", user_id, event_type="validation")
             return
         question = ""
     else:
         question = text
 
     if not question.strip() and not promo_applied:
-        await bot.send_message(chat_id=chat_id, text="Пожалуйста, введите вопрос.")
+        await _send_message(bot, chat_id, "Пожалуйста, введите вопрос.", user_id, event_type="validation")
         return
 
     can_create, time_left = RateLimitService.can_create_reading(session_key)
     if not can_create:
         _set_state(user_id, STATE_RATE_LIMITED)
-        await bot.send_message(
-            chat_id=chat_id,
-            text=(
+        await _send_message(
+            bot,
+            chat_id,
+            (
                 "Вы недавно делали расклад. Следующий будет доступен через "
                 f"{_format_time_left(time_left)}."
             ),
+            user_id,
+            event_type="rate_limit",
         )
         return
 
@@ -278,7 +348,7 @@ async def _handle_question_input(user_id, chat_id, text, bot):
             user_gender = profile.user_gender
     if user_age is None or user_gender is None:
         _set_state(user_id, STATE_AWAITING_AGE)
-        await bot.send_message(chat_id=chat_id, text="Начнем сначала. Сколько вам лет?")
+        await _send_message(bot, chat_id, "Начнем сначала. Сколько вам лет?", user_id, event_type="prompt")
         return
 
     try:
@@ -289,18 +359,24 @@ async def _handle_question_input(user_id, chat_id, text, bot):
             session_key,
         )
     except InsufficientCardsException:
-        await bot.send_message(
-            chat_id=chat_id,
-            text="В базе данных недостаточно карт для расклада. Попробуйте позже.",
+        await _send_message(
+            bot,
+            chat_id,
+            "В базе данных недостаточно карт для расклада. Попробуйте позже.",
+            user_id,
+            event_type="error",
         )
         _clear_state(user_id)
         _clear_data(user_id)
         return
     except Exception as exc:
         logger.error("Failed to create telegram reading: %s", exc, exc_info=True)
-        await bot.send_message(
-            chat_id=chat_id,
-            text="Произошла ошибка при создании расклада. Попробуйте позже.",
+        await _send_message(
+            bot,
+            chat_id,
+            "Произошла ошибка при создании расклада. Попробуйте позже.",
+            user_id,
+            event_type="error",
         )
         _clear_state(user_id)
         _clear_data(user_id)
@@ -308,9 +384,12 @@ async def _handle_question_input(user_id, chat_id, text, bot):
 
     _clear_state(user_id)
     _clear_data(user_id)
-    await bot.send_message(
-        chat_id=chat_id,
-        text="Карты выбраны. Сейчас отправлю изображения и значения, затем интерпретацию.",
+    await _send_message(
+        bot,
+        chat_id,
+        "Карты выбраны. Сейчас отправлю изображения и значения, затем интерпретацию.",
+        user_id,
+        event_type="status",
     )
 
     from .tasks import send_telegram_reading

@@ -1,0 +1,9 @@
+{% extends "admin/change_form.html" %}
+{% load admin_modify %}
+
+{% block submit_buttons_bottom %}
+  {% submit_row %}
+  <div class="submit-row">
+    <input type="submit" value="Применить" class="default" name="_apply">
+  </div>
+{% endblock %}

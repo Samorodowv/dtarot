@@ -3,10 +3,11 @@ import io
 from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
+from datetime import timedelta
 from django.core.cache import cache
 import logging
 import time
-from .models import Reading, CardPosition, Card
+from .models import Reading, CardPosition, Card, InteractionRetentionConfig
 from .gigachat_interpreter import TarotInterpreter
 from .monitoring import MonitoringUtils
 from .exceptions import (
@@ -14,6 +15,7 @@ from .exceptions import (
     GigaChatTimeoutException
 )
 from .telegram_utils import build_cards_summary, get_card_image_path, split_message
+from .interaction_logging import log_interaction
 
 try:
     from telegram import Bot, InputFile
@@ -63,6 +65,16 @@ def interpret_reading(self, reading_id):
         # Track performance metrics
         duration = time.time() - start_time
         MonitoringUtils.track_interpretation_time(reading_id, duration)
+
+        log_interaction(
+            source="web",
+            direction="out",
+            event_type="interpretation",
+            user_identifier=f"reading:{reading_id}",
+            content=interpretation,
+            reading=reading,
+            metadata={"reading_id": reading_id},
+        )
         
         logger.info(f"Successfully generated interpretation for reading {reading_id}")
         return True
@@ -269,6 +281,27 @@ def cleanup_old_readings():
     
     return count
 
+
+@shared_task
+def cleanup_interaction_logs():
+    """
+    Periodic task to clean up interaction logs based on retention config.
+    """
+    retention_days = InteractionRetentionConfig.get_retention_days()
+    if not retention_days:
+        return 0
+
+    cutoff_date = timezone.now() - timedelta(days=retention_days)
+    from .models import InteractionLog
+    old_logs = InteractionLog.objects.filter(created_at__lt=cutoff_date)
+    count = old_logs.count()
+
+    if count > 0:
+        old_logs.delete()
+        logger.info(f"Cleaned up {count} interaction logs older than {retention_days} days")
+
+    return count
+
 @shared_task
 def cache_card_data():
     """
@@ -310,7 +343,7 @@ def _run_async(coro):
 
 async def _send_plain_message(token, chat_id, text):
     async with Bot(token=token) as bot:
-        await _safe_send_message(bot, chat_id, text)
+        await _safe_send_message(bot, chat_id, text, event_type="message")
 
 
 async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
@@ -340,6 +373,14 @@ async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
         if spread_media:
             try:
                 await bot.send_photo(chat_id=chat_id, photo=spread_media, caption="Ваш расклад Таро")
+                log_interaction(
+                    source="telegram",
+                    direction="out",
+                    event_type="media",
+                    user_identifier=str(chat_id),
+                    content="Отправлено изображение расклада",
+                    metadata={"reading_id": reading_id, "type": "spread"},
+                )
                 sent_media = True
             except TelegramError as exc:
                 logger.error("Telegram spread send error: %s", exc)
@@ -356,6 +397,14 @@ async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
                     continue
                 try:
                     await bot.send_photo(chat_id=chat_id, photo=media, caption=payload["caption"])
+                    log_interaction(
+                        source="telegram",
+                        direction="out",
+                        event_type="media",
+                        user_identifier=str(chat_id),
+                        content=payload["caption"],
+                        metadata={"reading_id": reading_id, "type": "card"},
+                    )
                 except TelegramError as exc:
                     logger.error("Telegram photo send error: %s", exc)
                 finally:
@@ -367,7 +416,7 @@ async def _send_cards_and_meanings(token, chat_id, reading_id, card_payloads):
 
         summary = build_cards_summary(card_payloads)
         for chunk in split_message(summary):
-            await _safe_send_message(bot, chat_id, chunk)
+            await _safe_send_message(bot, chat_id, chunk, event_type="summary")
 
     cache.set(cache_key, True, 3600)
 
@@ -376,7 +425,13 @@ async def _send_processing_notice(token, chat_id, reading_id):
     cache_key = f"telegram_reading_{reading_id}_processing_sent"
     if cache.get(cache_key):
         return
-    await _send_plain_message(token, chat_id, "AI-мастер карт анализирует расклад, подождите немного.")
+    async with Bot(token=token) as bot:
+        await _safe_send_message(
+            bot,
+            chat_id,
+            "AI-мастер карт анализирует расклад, подождите немного.",
+            event_type="processing",
+        )
     cache.set(cache_key, True, 3600)
 
 
@@ -385,12 +440,20 @@ async def _send_interpretation(token, chat_id, interpretation):
         return
     async with Bot(token=token) as bot:
         for chunk in split_message(interpretation):
-            await _safe_send_message(bot, chat_id, chunk)
+            await _safe_send_message(bot, chat_id, chunk, event_type="interpretation")
 
 
-async def _safe_send_message(bot, chat_id, text):
+async def _safe_send_message(bot, chat_id, text, event_type="message"):
     try:
         await bot.send_message(chat_id=chat_id, text=text)
+        log_interaction(
+            source="telegram",
+            direction="out",
+            event_type=event_type,
+            user_identifier=str(chat_id),
+            content=text,
+            metadata={"chat_id": chat_id},
+        )
     except TelegramError as exc:
         logger.error(f"Telegram send error: {exc}")
 

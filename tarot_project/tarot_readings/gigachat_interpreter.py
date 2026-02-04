@@ -18,9 +18,17 @@ from .exceptions import (
     GigaChatModelUnavailableException, GigaChatValidationException
 )
 from .gigachat_auth import GigaChatAuth
+from .models import PromptConfig
 from .model_selector import model_selector
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TAROT_PROMPT = (
+    "Ты - опытный таролог с глубокими познаниями в эзотерике и психологии. "
+    "Твоя задача - интерпретировать расклад Таро, учитывая позиции карт, их "
+    "прямое или перевернутое положение, и вопрос клиента. "
+    "Дай подробную и содержательную интерпретацию с практическими советами."
+)
 
 
 class TarotInterpreter:
@@ -214,12 +222,11 @@ class TarotInterpreter:
 
     def _get_system_prompt_for_model(self, model_name: str) -> str:
         """Get a single system prompt independent of model selection"""
-        return (
-            "Ты - опытный таролог с глубокими познаниями в эзотерике и психологии. "
-            "Твоя задача - интерпретировать расклад Таро, учитывая позиции карт, их "
-            "прямое или перевернутое положение, и вопрос клиента. "
-            "Дай подробную и содержательную интерпретацию с практическими советами."
-        )
+        try:
+            return PromptConfig.get_active_prompt(default=DEFAULT_TAROT_PROMPT)
+        except Exception as exc:
+            logger.warning("Failed to load prompt from admin: %s", exc)
+            return DEFAULT_TAROT_PROMPT
 
     def get_available_models(self) -> List[str]:
         """Get list of available GigaChat models"""
